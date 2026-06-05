@@ -1,0 +1,24 @@
+{
+	"info": {
+		"zh-CN": {
+			"name": "CI 结算",
+			"avatar": "",
+			"description": "fount-CI 任务退出状态插件",
+			"description_markdown": "允许角色标记 CI 任务完成状态并退出。",
+			"version": "0.0.0",
+			"author": "steve02081504",
+			"home_page": "",
+			"tags": ["CI"]
+		},
+		"en-UK": {
+			"name": "CI Settlement",
+			"avatar": "",
+			"description": "fount-CI task exit status plugin",
+			"description_markdown": "Allows the character to mark CI task completion and exit.",
+			"version": "0.0.0",
+			"author": "steve02081504",
+			"home_page": "",
+			"tags": ["CI"]
+		}
+	}
+}

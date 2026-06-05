@@ -1,0 +1,22 @@
+{
+	"chars": {
+		"fount-CI-agent": true
+	},
+	"chars/fount-CI-agent": true,
+	"plugins": {
+		"CI-settlement": true
+	},
+	"plugins/CI-settlement": true,
+	"plugins/code-execution": true,
+	"plugins/file-operations": true,
+	"AIsources": {
+		"fount-CI": true
+	},
+	"serviceSources": true,
+	"serviceSources/AI": true,
+	"serviceSources/AI/fount-CI": true,
+	"serviceGenerators": true,
+	"serviceGenerators/AI": true,
+	"serviceGenerators/AI/proxy": true,
+	"serviceGenerators/AI/empty": true
+}

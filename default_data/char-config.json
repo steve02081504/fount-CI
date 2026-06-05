@@ -1,0 +1,8 @@
+{
+	"AIsource": "${AIsource}",
+	"plugins": [
+		"code-execution",
+		"file-operations",
+		"${CIPlugin}"
+	]
+}

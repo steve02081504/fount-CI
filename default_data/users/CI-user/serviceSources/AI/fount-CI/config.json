@@ -1,0 +1,10 @@
+{
+	"generator": "proxy",
+	"config": {
+		"name": "fount-CI",
+		"url": "",
+		"apikey": "",
+		"model": "",
+		"use_stream": true
+	}
+}

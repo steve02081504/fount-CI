@@ -1,0 +1,213 @@
+name: 'fount-CI'
+description: 'Run AI agent tasks in GitHub Actions using fount'
+branding:
+  color: 'blue'
+  icon: 'zap'
+inputs:
+  task:
+    description: 'Task description for the AI agent'
+    required: true
+  char-path:
+    description: 'Optional fount character folder in the consumer repo to load (empty = builtin fount-CI-agent)'
+    required: false
+    default: ''
+  char-config-path:
+    description: 'JSON file path passed to char.interfaces.config.SetData after load (not the char folder); supports ${} placeholders'
+    required: false
+    default: 'default_data/char-config.json'
+  aisource-path:
+    description: 'Optional path to a fount AI source folder in the consumer repository'
+    required: false
+    default: ''
+  max-steps:
+    description: 'Maximum chat_log length (empty for unlimited)'
+    required: false
+    default: ''
+  max-time-seconds:
+    description: 'Maximum runtime in seconds (empty for unlimited)'
+    required: false
+    default: ''
+  CI-username:
+    description: 'fount virtual username'
+    required: false
+    default: CI-user
+  github-token:
+    description: 'GitHub token for cache management'
+    required: false
+    default: ${{ github.token }}
+  fount-ref:
+    description: 'fount git ref to clone'
+    required: false
+    default: master
+  no-push:
+    description: 'Set to true to skip commit and push after a successful agent run'
+    required: false
+    default: 'false'
+  commit-message:
+    description: 'Commit message for push after a successful agent run'
+    required: false
+    default: 'files update~'
+  committer-email:
+    description: 'Git author email for the commit'
+    required: false
+    default: 'taromati2@outlook.com'
+  committer-name:
+    description: 'Git author name for the commit'
+    required: false
+    default: 'Taromati2'
+  token:
+    description: 'Token for git push after a successful agent run'
+    required: false
+    default: ${{ github.token }}
+outputs:
+  status:
+    description: 'success / failure / timeout / max-steps'
+    value: ${{ steps.agent.outputs.status }}
+  reason:
+    description: 'Exit reason'
+    value: ${{ steps.agent.outputs.reason }}
+  steps-used:
+    description: 'Final chat_log.length'
+    value: ${{ steps.agent.outputs.steps-used }}
+runs:
+  using: 'composite'
+  steps:
+    - run: git clone --depth 1 --branch ${{ inputs.fount-ref }} https://github.com/steve02081504/fount.git $GITHUB_ACTION_PATH/fount
+      shell: bash
+    - run: |
+        cp -r $GITHUB_ACTION_PATH/default_data $GITHUB_ACTION_PATH/fount/.vm_data_fountCI
+        if [ "${{ inputs.CI-username }}" != "CI-user" ]; then
+          mv $GITHUB_ACTION_PATH/fount/.vm_data_fountCI/users/CI-user $GITHUB_ACTION_PATH/fount/.vm_data_fountCI/users/${{ inputs.CI-username }}
+          CONFIG_PATH="$GITHUB_ACTION_PATH/fount/.vm_data_fountCI/config.json"
+          jq ".users[\"${{ inputs.CI-username }}\"] = .users[\"CI-user\"] | del(.users[\"CI-user\"])" "$CONFIG_PATH" > "${CONFIG_PATH}.tmp" && mv "${CONFIG_PATH}.tmp" "$CONFIG_PATH"
+        fi
+        mkdir -p "$GITHUB_ACTION_PATH/fount/.vm_data_fountCI/users/${{ inputs.CI-username }}/chars"
+        mkdir -p "$GITHUB_ACTION_PATH/fount/.vm_data_fountCI/users/${{ inputs.CI-username }}/settings"
+      shell: bash
+    - name: Setup character and AI source
+      run: |
+        export CI_username=${{ inputs.CI-username }}
+        USER_DIR="$GITHUB_ACTION_PATH/fount/.vm_data_fountCI/users/$CI_username"
+        export CI_charname="fount-CI-agent"
+        export FOUNT_CI_AISOURCE_NAME="fount-CI"
+
+        if [ -n "${{ inputs.char-path }}" ]; then
+          CHAR_SRC="$GITHUB_WORKSPACE/${{ inputs.char-path }}"
+          if [ ! -d "$CHAR_SRC" ]; then
+            echo "::error::char-path not found: $CHAR_SRC"
+            exit 1
+          fi
+          rm -rf "$USER_DIR/chars/CI-char-import"
+          cp -r "$CHAR_SRC" "$USER_DIR/chars/CI-char-import"
+          CI_charname=$(jq -r '.dirname' "$USER_DIR/chars/CI-char-import/fount.json")
+          if [ "$CI_charname" != "CI-char-import" ]; then
+            mv "$USER_DIR/chars/CI-char-import" "$USER_DIR/chars/${CI_charname}"
+          fi
+        fi
+
+        if [ -n "${{ inputs.aisource-path }}" ]; then
+          AI_SRC="$GITHUB_WORKSPACE/${{ inputs.aisource-path }}"
+          if [ ! -d "$AI_SRC" ]; then
+            echo "::error::aisource-path not found: $AI_SRC"
+            exit 1
+          fi
+          FOUNT_CI_AISOURCE_NAME=$(basename "$AI_SRC")
+          rm -rf "$USER_DIR/serviceSources/AI/$FOUNT_CI_AISOURCE_NAME"
+          mkdir -p "$USER_DIR/serviceSources/AI"
+          cp -r "$AI_SRC" "$USER_DIR/serviceSources/AI/$FOUNT_CI_AISOURCE_NAME"
+        fi
+
+        echo "CI_charname=${CI_charname}" >> $GITHUB_ENV
+        echo "CI_username=${CI_username}" >> $GITHUB_ENV
+        echo "FOUNT_CI_AISOURCE_NAME=${FOUNT_CI_AISOURCE_NAME}" >> $GITHUB_ENV
+
+        mkdir -p $GITHUB_ACTION_PATH/fount/node_modules/.deno
+        find $GITHUB_ACTION_PATH/fount/node_modules/ -mindepth 1 -maxdepth 1 ! -name ".deno" -exec rm -rf {} +
+      shell: bash
+    - name: Inject AI source secrets
+      run: |
+        CONFIG="$GITHUB_ACTION_PATH/fount/.vm_data_fountCI/users/${{ inputs.CI-username }}/serviceSources/AI/${FOUNT_CI_AISOURCE_NAME}/config.json"
+        if [ ! -f "$CONFIG" ]; then
+          echo "::error::AI source config not found: $CONFIG"
+          exit 1
+        fi
+        jq \
+          --arg url "$OPENAI_BASE_URL" \
+          --arg apikey "$OPENAI_API_KEY" \
+          --arg model "$OPENAI_MODEL" \
+          '.config.url = $url | .config.apikey = $apikey | .config.model = $model' \
+          "$CONFIG" > "${CONFIG}.tmp" && mv "${CONFIG}.tmp" "$CONFIG"
+      shell: bash
+      env:
+        OPENAI_BASE_URL: ${{ env.OPENAI_BASE_URL }}
+        OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
+        OPENAI_MODEL: ${{ env.OPENAI_MODEL }}
+    - uses: denoland/setup-deno@v2
+      id: deno
+      with:
+        deno-version: vx.x.x
+        cache: true
+    - uses: actions/cache@v4
+      with:
+        path: ${{ github.action_path }}/fount/node_modules
+        key: fount-CI-node-modules-${{ runner.os }}-${{ runner.arch }}
+    - id: agent
+      name: Run fount-CI agent
+      run: |
+        cd "$GITHUB_WORKSPACE"
+        deno run --allow-scripts --allow-all --unstable-npm-lazy-caching -c $GITHUB_ACTION_PATH/fount/deno.json --v8-flags=--expose-gc $GITHUB_ACTION_PATH/index.mjs
+      shell: bash
+      env:
+        GITHUB_ACTION_PATH: ${{ github.action_path }}
+        FOUNT_CI_TASK: ${{ inputs.task }}
+        FOUNT_CI_CHAR_CONFIG_PATH: ${{ inputs.char-config-path }}
+        FOUNT_CI_MAX_STEPS: ${{ inputs.max-steps }}
+        FOUNT_CI_MAX_TIME_SECONDS: ${{ inputs.max-time-seconds }}
+        OPENAI_BASE_URL: ${{ env.OPENAI_BASE_URL }}
+        OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
+        OPENAI_MODEL: ${{ env.OPENAI_MODEL }}
+    - name: Delete Previous Cache
+      if: ${{ always() && steps.agent.conclusion != 'skipped' }}
+      continue-on-error: true
+      shell: bash
+      run: |
+        gh extension install actions/gh-actions-cache || true
+        gh actions-cache delete "fount-CI-node-modules-${{ runner.os }}-${{ runner.arch }}" --confirm || true
+        gh actions-cache delete "deno-cache-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('**/deno.lock') }}" --confirm || true
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+    - name: Save Cache
+      if: ${{ always() && steps.agent.conclusion != 'skipped' }}
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ github.action_path }}/fount/node_modules
+        key: fount-CI-node-modules-${{ runner.os }}-${{ runner.arch }}
+    - name: get deno dir
+      if: ${{ always() && steps.agent.conclusion != 'skipped' }}
+      shell: bash
+      run: echo "DENO_DIR=$(deno info --json | jq -r '.denoDir')" >> $GITHUB_ENV
+    - name: Save Deno Cache
+      if: ${{ always() && steps.agent.conclusion != 'skipped' }}
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.DENO_DIR }}
+        key: deno-cache-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('**/deno.lock') }}
+    - name: Stage agent changes
+      if: ${{ steps.agent.outputs.status == 'success' && inputs.no-push == 'false' && !startsWith(github.ref, 'refs/tags/') }}
+      shell: bash
+      run: git add -A
+    - name: Sync with remote before push
+      if: ${{ steps.agent.outputs.status == 'success' && inputs.no-push == 'false' && !startsWith(github.ref, 'refs/tags/') }}
+      shell: bash
+      run: |
+        branch="$(git rev-parse --abbrev-ref HEAD)"
+        git pull --rebase --autostash origin "$branch"
+    - id: commit
+      if: ${{ steps.agent.outputs.status == 'success' && inputs.no-push == 'false' && !startsWith(github.ref, 'refs/tags/') }}
+      uses: actions-go/push@master
+      with:
+        author-email: ${{ inputs.committer-email }}
+        author-name: ${{ inputs.committer-name }}
+        commit-message: ${{ inputs.commit-message }}
+        remote: origin
+        token: ${{ inputs.token }}

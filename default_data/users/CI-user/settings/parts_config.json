@@ -1,0 +1,10 @@
+{
+	"chars/fount-CI-agent": {
+		"AIsource": "fount-CI",
+		"plugins": [
+			"code-execution",
+			"file-operations",
+			"CI-settlement"
+		]
+	}
+}
