@@ -120,9 +120,6 @@ runs:
         echo "CI_charname=${CI_charname}" >> $GITHUB_ENV
         echo "CI_username=${CI_username}" >> $GITHUB_ENV
         echo "FOUNT_CI_AISOURCE_NAME=${FOUNT_CI_AISOURCE_NAME}" >> $GITHUB_ENV
-
-        mkdir -p $GITHUB_ACTION_PATH/fount/node_modules/.deno
-        find $GITHUB_ACTION_PATH/fount/node_modules/ -mindepth 1 -maxdepth 1 ! -name ".deno" -exec rm -rf {} +
       shell: bash
     - name: Inject AI source secrets
       run: |
@@ -145,17 +142,17 @@ runs:
     - uses: denoland/setup-deno@v2
       id: deno
       with:
-        deno-version: vx.x.x
-        cache: true
+        deno-version: latest
+        cache-hash: fount
     - uses: actions/cache@v4
       with:
         path: ${{ github.action_path }}/fount/node_modules
-        key: fount-CI-node-modules-${{ runner.os }}-${{ runner.arch }}
+        key: fount-CI-node-modules
     - id: agent
       name: Run fount-CI agent
       run: |
         cd "$GITHUB_WORKSPACE"
-        deno run --allow-scripts --allow-all --unstable-npm-lazy-caching -c $GITHUB_ACTION_PATH/fount/deno.json --v8-flags=--expose-gc $GITHUB_ACTION_PATH/index.mjs
+        deno run --allow-scripts --allow-all --unstable-npm-lazy-caching -c $GITHUB_ACTION_PATH/fount/deno.json $GITHUB_ACTION_PATH/index.mjs
       shell: bash
       env:
         GITHUB_ACTION_PATH: ${{ github.action_path }}
@@ -172,26 +169,43 @@ runs:
       shell: bash
       run: |
         gh extension install actions/gh-actions-cache || true
-        gh actions-cache delete "fount-CI-node-modules-${{ runner.os }}-${{ runner.arch }}" --confirm || true
-        gh actions-cache delete "deno-cache-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('**/deno.lock') }}" --confirm || true
+        gh actions-cache delete "fount-CI-node-modules" --confirm || true
+        gh actions-cache delete "deno-cache-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-fount" --confirm || true
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-    - name: Save Cache
+    - name: clean before cache save
       if: ${{ always() && steps.agent.conclusion != 'skipped' }}
+      continue-on-error: true
+      shell: bash
+      run: |
+        FOUNT="$GITHUB_ACTION_PATH/fount"
+        CHAR_DIR="$FOUNT/.vm_data_fountCI/users/$CI_username/chars/$CI_charname"
+        ENTRYPOINTS=()
+        add_entry() { [ -f "$1" ] && ENTRYPOINTS+=("$1"); }
+        add_entry "$GITHUB_ACTION_PATH/index.mjs"
+        add_entry "$FOUNT/src/server/server.mjs"
+        add_entry "$CHAR_DIR/main.mjs"
+        [ ${#ENTRYPOINTS[@]} -eq 0 ] && exit 0
+        cd "$FOUNT"
+        deno clean --except "${ENTRYPOINTS[@]}"
+    - name: Save node_modules Cache
+      if: ${{ always() && steps.agent.conclusion != 'skipped' }}
+      continue-on-error: true
       uses: actions/cache/save@v4
       with:
         path: ${{ github.action_path }}/fount/node_modules
-        key: fount-CI-node-modules-${{ runner.os }}-${{ runner.arch }}
+        key: fount-CI-node-modules
     - name: get deno dir
       if: ${{ always() && steps.agent.conclusion != 'skipped' }}
       shell: bash
       run: echo "DENO_DIR=$(deno info --json | jq -r '.denoDir')" >> $GITHUB_ENV
     - name: Save Deno Cache
       if: ${{ always() && steps.agent.conclusion != 'skipped' }}
+      continue-on-error: true
       uses: actions/cache/save@v4
       with:
         path: ${{ env.DENO_DIR }}
-        key: deno-cache-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('**/deno.lock') }}
+        key: deno-cache-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-fount
     - name: Stage agent changes
       if: ${{ steps.agent.outputs.status == 'success' && inputs.no-push == 'false' && !startsWith(github.ref, 'refs/tags/') }}
       shell: bash

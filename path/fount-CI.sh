@@ -53,5 +53,5 @@ if [[ -n "$OPENAI_BASE_URL" && -n "$OPENAI_API_KEY" && -n "$OPENAI_MODEL" ]]; th
 fi
 
 cd "$GITHUB_WORKSPACE"
-deno run --allow-scripts --allow-all --unstable-npm-lazy-caching -c "$FOUNT_DIR/deno.json" --v8-flags=--expose-gc "$CI_DIR/index.mjs"
+deno run --allow-scripts --allow-all --unstable-npm-lazy-caching -c "$FOUNT_DIR/deno.json" "$CI_DIR/index.mjs"
 exit $?

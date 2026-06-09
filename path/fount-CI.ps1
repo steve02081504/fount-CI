@@ -39,5 +39,5 @@ if ($env:OPENAI_BASE_URL -and $env:OPENAI_API_KEY -and $env:OPENAI_MODEL) {
 }
 
 Set-Location $env:GITHUB_WORKSPACE
-deno run --allow-scripts --allow-all --unstable-npm-lazy-caching -c (Join-Path $FOUNT_DIR 'deno.json') --v8-flags=--expose-gc (Join-Path $CI_DIR 'index.mjs')
+deno run --allow-scripts --allow-all --unstable-npm-lazy-caching -c (Join-Path $FOUNT_DIR 'deno.json') (Join-Path $CI_DIR 'index.mjs')
 exit $LASTEXITCODE
